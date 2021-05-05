@@ -4,11 +4,9 @@
 #include <string>
 
 #include "Window.h"
-#include "Client.h"
 
 namespace Tiny 
 {
-    class Client;
 
     class Window;
 
@@ -17,7 +15,6 @@ namespace Tiny
     private:
     public:
         Tiny::Window *window;
-        Tiny::Client *client;
         Application(/* args */);
         ~Application();
         static void message_callback(Tiny::Application* app, std::string message);

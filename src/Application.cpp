@@ -11,7 +11,8 @@ Tiny::Application::Application(/* args */)
     server.bind();
     server.listen();
     server.set_callback(this, &Application::message_callback);
-    client = server.accept();
+    server.start();
+    spdlog::info("Starting GUI");
     window->set_callback(this, &Application::window_callback);
     run(*window);
     spdlog::info("Server stopped");
@@ -21,7 +22,6 @@ Tiny::Application::Application(/* args */)
 Tiny::Application::~Application()
 {
     delete window;
-    delete client;
 }
 
 void Tiny::Application::message_callback(Tiny::Application* app, std::string message)
@@ -32,6 +32,6 @@ void Tiny::Application::message_callback(Tiny::Application* app, std::string mes
 void Tiny::Application::window_callback(Tiny::Application* app, std::string message)
 {
     spdlog::info("Message received");
-    app->client->send_message(message.c_str());
+    // app->client->send_message(message.c_str());
     app->window->display_message(message);
 }
