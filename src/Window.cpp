@@ -14,7 +14,7 @@ bool Tiny::Window::send_message(Gdk::Event* event)
 Tiny::Window::Window(/* args */)
 {
 
-    _builder = Gtk::Builder::create_from_file("/home/thomas/Documents/Programming/tinychat/tiny_server/res/Window.glade");
+    _builder = Gtk::Builder::create_from_file("/home/thomas/Documents/Programming/tiny_chat/tiny_server/res/Window.glade");
     _builder->get_widget("box_layout", _layout);
     _builder->get_widget("button_send", _button_send);
     _builder->get_widget("textview_messages", _textview_messages);
