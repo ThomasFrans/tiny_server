@@ -11,6 +11,9 @@
 #include <string>
 #include <iostream>
 #include <thread>
+#include <chrono>
+
+std::mutex clients_mutex;
 
 Tiny::Server::Server(const char *address, int port) : _addrlen(sizeof(_sock_address))
 {
@@ -67,12 +70,13 @@ bool Tiny::Server::listen()
 
 void Tiny::Server::start()
 {
-    _client_listener = new std::thread(&Server::client_listener, *this);
+    client_listener();
 }
 
 void Tiny::Server::client_listener()
 {
     int socket;
+    std::vector<std::thread> threads;
     while (true)
     {
         if ((socket = ::accept(_fd, (struct sockaddr *)&_sock_address,
@@ -81,25 +85,39 @@ void Tiny::Server::client_listener()
             perror("accept");
             exit(EXIT_FAILURE);
         }
-        handle_client(socket);
+        send_socket(socket, "Hello, please enter a name: ");
+        std::string buffer = receive_socket(socket);
+        std::string welcome_message = "User ";
+        welcome_message.append(buffer);
+        welcome_message.append(" now registered!");
+        send_socket(socket, welcome_message.c_str());
+        spdlog::info(buffer);
+
+        Client *client = new Client();
+        client->name = buffer;
+        client->socket = socket;
+        client->connected = true;
+        add_client(client);
+        threads.push_back(std::thread(&Server::read, *client, this));
+        if (threads.size() > 2) {
+            std::vector<std::thread>::iterator it;
+            while (threads.size() > 2){
+                for (it = threads.begin(); it < threads.end(); it++)
+                {
+                    if (it->joinable()) {
+                        it->join();
+                        threads.erase(it);
+                    }
+                }
+            }
+        }
     }
 }
 
 void Tiny::Server::handle_client(int socket)
 {
-    send_socket(socket, "Hello, please enter a name: ");
-    std::string buffer = receive_socket(socket);
-    std::string welcome_message = "User ";
-    welcome_message.append(buffer);
-    welcome_message.append(" now registered!");
-    send_socket(socket, welcome_message.c_str());
-    spdlog::info("Got client socket");
-    (*clients)[std::string(buffer)].socket = socket;
-    spdlog::info("Added Client socket");
-    std::thread *read_thread = new std::thread(&Server::read, *this, std::string(buffer));
-    spdlog::info("Added read thread");
-    (*clients)[std::string(buffer)].read_thread = read_thread;
-    spdlog::info("Completed client add");
+
+    // client.read_thread = new std::thread(&Server::read, *this, std::string(buffer));
 }
 
 void Tiny::Server::write(std::string message)
@@ -113,19 +131,27 @@ void Tiny::Server::write(std::string message)
     }
 }
 
-void Tiny::Server::read(std::string client)
+void Tiny::Server::read(Client client, Server *s)
 {
     int valread;
-    while (true)
+    bool running = true;
+    while (running)
     {
         char buffer[1024] = {0};
-        valread = recv(clients->at(client).socket, buffer, 1024, 0);
+        spdlog::info("at here 2");
+        valread = recv(client.socket, buffer, 1024, 0);
         if (valread == 0)
         {
-            exit(EXIT_SUCCESS);
+            running = false;
+            close(client.socket);
+            s->remove_client(client.name);
         }
-        process_message(client, buffer);
+        else
+        {
+            s->process_message(client.name, buffer);
+        }
     }
+    spdlog::info("Exiting thread");
 }
 
 void Tiny::Server::process_message(std::string client, const char *message)
@@ -135,9 +161,14 @@ void Tiny::Server::process_message(std::string client, const char *message)
     find = s_message.find(" ");
     if (s_message.find("!connect") != std::string::npos)
     {
-        (*connections)[client] = clients->at(s_message.substr(find + 1));
-        (*connections)[s_message.substr(find + 1)] = clients->at(client);
-    } else if (connections->count(client) > 0) {
+        add_connection(client, s_message.substr(find + 1));
+    }
+    else if (s_message.find("!disconnect") != std::string::npos)
+    {
+        remove_connection(client);
+    }
+    else if (connections->count(client) > 0)
+    {
         send_socket(connections->at(client).socket, message);
     }
     else
@@ -170,4 +201,41 @@ Tiny::Server::~Server()
     delete _client_listener;
     delete connections;
     delete clients;
+}
+
+void Tiny::Server::add_client(Client *client)
+{
+    clients_mutex.lock();
+    (*clients)[client->name] = *client;
+    clients_mutex.unlock();
+}
+
+void Tiny::Server::remove_client(std::string client)
+{
+    remove_connection(client);
+    spdlog::info("All connections removed");
+    // delete client.read_thread;
+    clients_mutex.lock();
+    clients->erase(client);
+    clients_mutex.unlock();
+    spdlog::info("Client removed");
+}
+
+void Tiny::Server::add_connection(std::string first, std::string second)
+{
+    clients_mutex.lock();
+    spdlog::info("at here");
+    (*connections)[first] = clients->at(second);
+    (*connections)[second] = clients->at(first);
+    clients_mutex.unlock();
+}
+
+void Tiny::Server::remove_connection(std::string client)
+{
+    if (connections->count(client) > 0)
+    {
+        spdlog::info("at here 3");
+        connections->erase(connections->at(client).name);
+        connections->erase(client);
+    }
 }

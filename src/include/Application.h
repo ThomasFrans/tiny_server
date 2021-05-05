@@ -3,18 +3,13 @@
 #include "Tiny.h"
 #include <string>
 
-#include "Window.h"
-
 namespace Tiny 
 {
-
-    class Window;
 
     class Application : public Gtk::Application
     {
     private:
     public:
-        Tiny::Window *window;
         Application(/* args */);
         ~Application();
         static void message_callback(Tiny::Application* app, std::string message);

@@ -8,6 +8,8 @@
 #include "Application.h"
 #include <thread>
 #include <map>
+#include <mutex>
+
 
 namespace Tiny
 {
@@ -20,7 +22,8 @@ namespace Tiny
         struct Client
         {
             int socket;
-            std::thread* read_thread;
+            bool connected;
+            std::string name;
         };
         
         std::map<std::string, Client> *clients;
@@ -29,6 +32,7 @@ namespace Tiny
         int port, _fd, _addrlen;
         struct sockaddr_in _sock_address;
         std::thread *_client_listener;
+        std::thread *_client_disposer;
         Tiny::Application* app;
         void (*callback_fun)(Tiny::Application*, std::string);
         void send_socket(int, const char*);
@@ -36,6 +40,10 @@ namespace Tiny
         void handle_client(int);
         void client_listener();
         void process_message(std::string client, const char* message);
+        void add_client(Client*);
+        void remove_client(std::string);
+        void remove_connection(std::string);
+        void add_connection(std::string, std::string);
     public:
         
         Server(const char* address, int port);
@@ -44,7 +52,7 @@ namespace Tiny
         bool listen();
         void start();
         void write(std::string message);
-        void read(std::string client);
+        static void read(Client client, Server* s);
         void set_callback(Tiny::Application* s, void (*fp)(Tiny::Application*, std::string));
     };
 } // namespace Tiny
