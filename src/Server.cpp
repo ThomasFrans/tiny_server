@@ -85,26 +85,17 @@ void Tiny::Server::client_listener()
             perror("accept");
             exit(EXIT_FAILURE);
         }
-        send_socket(socket, "Hello, please enter a name: ");
-        std::string buffer = receive_socket(socket);
-        std::string welcome_message = "User ";
-        welcome_message.append(buffer);
-        welcome_message.append(" now registered!");
-        send_socket(socket, welcome_message.c_str());
-        spdlog::info(buffer);
 
-        Client *client = new Client();
-        client->name = buffer;
-        client->socket = socket;
-        client->connected = true;
-        add_client(client);
-        threads.push_back(std::thread(&Server::read, *client, this));
-        if (threads.size() > 2) {
+        threads.push_back(std::thread(&Server::handle_client, socket, this));
+        if (threads.size() > 3)
+        {
             std::vector<std::thread>::iterator it;
-            while (threads.size() > 2){
+            while (threads.size() > 2)
+            {
                 for (it = threads.begin(); it < threads.end(); it++)
                 {
-                    if (it->joinable()) {
+                    if (it->joinable())
+                    {
                         it->join();
                         threads.erase(it);
                     }
@@ -114,66 +105,103 @@ void Tiny::Server::client_listener()
     }
 }
 
-void Tiny::Server::handle_client(int socket)
+void Tiny::Server::handle_client(int socket, Server *s)
 {
+    Client temp(socket);
+    json welcome_msg;
+    welcome_msg["command"] = "Hello, please enter a name";
+    s->write(temp, welcome_msg);
+    json response = s->read(socket, s);
+    std::string welcome_message = "User ";
+    welcome_message.append(response["name"].get<std::string>());
+    welcome_message.append(" now registered!");
+    json hello_msg;
+    hello_msg["command"] = welcome_message;
+    s->write(temp, hello_msg);
 
-    // client.read_thread = new std::thread(&Server::read, *this, std::string(buffer));
-}
-
-void Tiny::Server::write(std::string message)
-{
-
-    std::string l_message;
-    while (true)
+    Client *client = new Client();
+    client->name = response["name"].get<std::string>();
+    client->socket = socket;
+    client->connected = true;
+    s->add_client(client);
+    while (client->connected)
     {
-        getline(std::cin, l_message);
-        // client->send_message(l_message.c_str());
-    }
-}
-
-void Tiny::Server::read(Client client, Server *s)
-{
-    int valread;
-    bool running = true;
-    while (running)
-    {
-        char buffer[1024] = {0};
-        spdlog::info("at here 2");
-        valread = recv(client.socket, buffer, 1024, 0);
-        if (valread == 0)
+        response = Tiny::Server::read(*client, s);
+        spdlog::info("here now");
+        if (client->connected)
         {
-            running = false;
-            close(client.socket);
-            s->remove_client(client.name);
-        }
-        else
-        {
-            s->process_message(client.name, buffer);
+            response["client"] = client->name;
+            s->command_dispatcher(response);
         }
     }
-    spdlog::info("Exiting thread");
 }
 
-void Tiny::Server::process_message(std::string client, const char *message)
+void Tiny::Server::write(Client &client, json msg)
 {
-    std::size_t find;
-    std::string s_message(message);
-    find = s_message.find(" ");
-    if (s_message.find("!connect") != std::string::npos)
+
+    std::string buffer = msg.dump();
+    const char* c_buffer = buffer.c_str();
+    send(client.socket, c_buffer, strlen(c_buffer), 0);
+}
+
+json Tiny::Server::read(Client &client, Server *s)
+{
+    char buffer[1024] = {0};
+    json res;
+    if (recv(client.socket, buffer, 1024, 0) == 0)
     {
-        add_connection(client, s_message.substr(find + 1));
-    }
-    else if (s_message.find("!disconnect") != std::string::npos)
-    {
-        remove_connection(client);
-    }
-    else if (connections->count(client) > 0)
-    {
-        send_socket(connections->at(client).socket, message);
+        close(client.socket);
+        s->remove_client(client.name);
+        if (s->clients->size() == 0)
+        {
+            exit(EXIT_SUCCESS);
+        }
+        client.connected = false;
+        res["something"] = "somethingelse";
     }
     else
     {
-        spdlog::info(message);
+        res = json::parse(buffer);
+    }
+    return res;
+}
+
+json Tiny::Server::read(int socket, Server *s)
+{
+    char buffer[1024] = {0};
+    if (recv(socket, buffer, 1024, 0) == 0)
+    {
+        close(socket);
+        exit(EXIT_FAILURE); // TODO exit gracefully when a client exits before full client creation!
+    }
+    else
+    {
+        return json::parse(buffer);
+    }
+}
+
+void Tiny::Server::command_dispatcher(json packet)
+{
+    if (packet["command"].get<std::string>() == std::string("connect"))
+    {
+        spdlog::info("connect");
+    }
+    else if (packet["command"].get<std::string>() == std::string("disconnect"))
+    {
+        spdlog::info("disconnect");
+    }
+    else if (packet["command"].get<std::string>() == std::string("list"))
+    {
+        spdlog::info("list");
+        std::vector<std::string> members;
+        for (std::map<std::string, Client>::iterator it = clients->begin(); it != clients->end(); it++)
+        {
+            members.push_back(it->first);
+        }
+        json res;
+        res["body"] = members;
+        res["command"] = "members";
+        write(clients->at(packet["client"].get<std::string>()), res);
     }
 }
 

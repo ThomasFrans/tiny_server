@@ -4,6 +4,8 @@
             "name": "Linux",
             "includePath": [
                 "${workspaceFolder}/vendor/spdlog/include",
+                "${workspaceFolder}/vendor/cereal/include",
+                "${workspaceFolder}/vendor/json/include",
                 "${workspaceFolder}/src/include",
                 "/usr/include/gtkmm-3.0",
                 "/usr/lib/x86_64-linux-gnu/gtkmm-3.0/include",
